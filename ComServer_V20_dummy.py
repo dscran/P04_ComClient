@@ -6,7 +6,7 @@
 #ps -fA | grep python
 
 
-import socket;import sys;import numpy as np;import time;import os;
+import socket;import sys;import time;import os;
 import random
 
 
@@ -17,9 +17,10 @@ class DDevice:
         if self.kind=='mono':
             self.a1=260
             self.a2=2300
+            self.energy = 780
         
     def Position(self):
-        self.give=self.a1+(self.a2-self.a1)*random.random()
+        self.give = self.energy + random.random() - 0.5
         return self.give
         
         
@@ -32,11 +33,22 @@ class givemeparser:
     def __init__(self,s):
         self.s=s
         self.lll=len(self.s)
-        if self.s[0:4]=='set ': self.command='set';self.curpos=4
-        elif self.s[0:5]=='read ': self.command='read';self.curpos=5
-        elif self.s[0:7]=='status ': self.command='status';self.curpos=7
-        elif self.s[0:15]=='closeconnection': print 'closing';self.command='closeconnection';self.curpos=15
-        elif self.s[0:4]=='OTF ': self.command='OTF';self.curpos=4
+        if self.s[0:4]=='set ':
+            self.command='set'
+            self.curpos=4
+        elif self.s[0:5]=='read ':
+            self.command='read'
+            self.curpos=5
+        elif self.s[0:7]=='status ':
+            self.command='status'
+            self.curpos=7
+        elif self.s[0:15]=='closeconnection':
+            print('closing')
+            self.command='closeconnection'
+            self.curpos=15
+        elif self.s[0:4]=='OTF ':
+            self.command='OTF'
+            self.curpos=4
         
         else: self.command='unknown'
         self.alias=''
@@ -76,6 +88,7 @@ class executecommand:
         self.alias=commando[1]
         self.value=float(commando[2])
         self.parsers=commando[3]
+        self.tango = True
         
         if self.alias=='mono':
             if atP04:
@@ -105,8 +118,9 @@ class executecommand:
                 if self.alias=='mono':
                     if self.minvalue<=float(self.value)<=self.maxvalue:
                         time.sleep(random.random())
-                        print 'moving'
-                        time.sleep(random.random())
+                        print 'moving for 10 seconds'
+                        time.sleep(10)
+                        self.motor.energy = self.value
                         print 'moving stopped, sending answer'
                         connection.sendall('done eoa')
                     else:
@@ -133,7 +147,7 @@ while True:
     sock.bind(server_address)						
     sock.listen(1)
     
-    print 'waiting for connection'
+    print 'waiting for connection on port 3001'
     connection, clientaddress = sock.accept()	
     
     print 'connection established to'+str(clientaddress)
