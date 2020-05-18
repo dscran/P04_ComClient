@@ -57,7 +57,7 @@ class P04_beamline(Device):
         return ans
     
     @command(dtype_in=str)
-    def cmd_async(self, msg, test):
+    def cmd_async(self, msg):
         '''Send a command without waiting for it to finish.'''
         t = Thread(target=self.query, args=(msg,))
         t.daemon = True
@@ -68,9 +68,6 @@ class P04_beamline(Device):
         ans = self.query('closeconnection')
         if 'bye!' in ans:
             self.set_state(DevState.OFF)
-    
-    # @command(dtype_in=(float,))
-    # def otf_scan_energy(self)
     
     def read_energy(self):
         energy, tstamp, state = self.read_attr('mono')
@@ -90,6 +87,7 @@ class P04_beamline(Device):
         state = self.is_movable()
         ans = self.query(f'read {attr}')
         if 'current position' in ans:
+            self.set_state(DevState.ON)
             val = float(ans.split(':')[1])
             return val, time(), state
         elif 'busy' in ans:
@@ -99,13 +97,8 @@ class P04_beamline(Device):
             return None, time(), AttrQuality.ATTR_WARNING
 
     def write_energy(self, energy):
-        if self.is_movable():
-            ans = self.query(f'send mono {energy:.2f}')
-            if ans == 'started':
-                self.set_state(DevState.MOVING)
-                self.debug_stream(f'Energy moving to {energy:.2f}')
-            else:
-                self.debug_stream(f'could not send Energy to {energy:.2f}')
+        self.set_state(DevState.MOVING)
+        self.cmd_async(f'set mono {energy}')
 
 
 
