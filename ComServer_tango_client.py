@@ -11,55 +11,102 @@ import socket
 from threading import Lock, Thread
 from time import time
 
-from tango import AttrQuality, AttrWriteType, DispLevel, DevState
+import tango
+from tango import AttrQuality, DevState
 from tango.server import Device, attribute, command
-from tango.server import class_property, device_property
+from tango.server import device_property
+from tango import READ, READ_WRITE
 
 
 class P04_beamline(Device):
     
-    energy = attribute(
-        label="photon energy", dtype=float, access=AttrWriteType.READ_WRITE,
-        unit="eV", format="%6.2f", min_value=240, max_value=2000)
+    DYN_ATTRS = [
+        dict(name='photonenergy', label='photon energy', dtype=tango.DevFloat,
+             access=READ_WRITE, unit='eV', format='%6.2f', min_value=240,
+             max_value=2000),
+        dict(name='exitslit', label="exit slit", dtype=tango.DevFloat,
+             access=READ_WRITE, unit="um", format="%4.0f", polling_period=1),
+        dict(name='helicity', label='helicity', dtype=tango.DevLong,
+             access=READ_WRITE),
+        dict(name='mono', label="monochromator", dtype=tango.DevFloat,
+             access=READ, unit="eV", format="%6.2f", polling_period=1),
+        dict(name='undugap', label='undulator gap', dtype=tango.DevFloat,
+             access=READ, unit='mm', polling_period=1),
+        dict(name='undufactor', label='undulator scale factor',
+             access=READ_WRITE, dtype=tango.DevFloat),
+        dict(name='undushift', label='undulator shift', dtype=tango.DevFloat,
+             access=READ, unit='mm'),
+        dict(name='ringcurrent', label='ring current', dtype=tango.DevFloat,
+             access=READ, unit='mA'),
+        dict(name='keithley1', label='beamline keithley', dtype=tango.DevFloat,
+             access=READ),
+        dict(name='keithley2', label='user keithley', dtype=tango.DevFloat,
+             access=READ),
+        dict(name='slt2hleft', label='slit hor left', dtype=tango.DevFloat,
+             access=READ),
+        dict(name='slt2hright', label='slit hor right', dtype=tango.DevFloat,
+             access=READ),
+        dict(name='slt2vgap', label='slit ver gap', dtype=tango.DevFloat,
+             access=READ),
+        dict(name='slt2voffset', label='slit ver offset', dtype=tango.DevFloat,
+             access=READ),
+        dict(name='exsu2bpm', label='exsu2bpm', dtype=tango.DevFloat,
+             access=READ),
+        dict(name='exsu2baffle', label='exsu2baffle', dtype=tango.DevFloat,
+             access=READ),
+        ]
     
-    mono = attribute(
-        label="monochromator", dtype=float, access=AttrWriteType.READ,
-        unit="eV", format="%6.2f")
+    screen = attribute(name='screen', dtype=tango.DevEnum,
+                       enum_labels=['closed', 'mesh', 'open'])
     
-    exitslit = attribute(
-        label="exit slit", dtype=float, access=AttrWriteType.READ_WRITE,
-        unit="um", format="%4.0f")
-    
-    undugap = attribute(
-        label="undulator gap", dtype=float, access=AttrWriteType.READ,
-        unit="mm", format="%4.0f")
-
-    # host = device_property(dtype=str)
-    # port = device_property(dtype=int, default_value=3001)
+    host = device_property(dtype=str, mandatory=True, update_db=True)
+    port = device_property(dtype=int, default_value=3001, mandatory=True)
     
     def init_device(self):
         Device.init_device(self)
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect(('127.0.1.1', 3001))
+        self.s.connect((self.host, self.port))
         self.s.setblocking(True)
         self.lock = Lock()
         self.set_state(DevState.ON)
+    
+    def initialize_dynamic_attributes(self):
+        # TODO: setup polling and event filter
+        for d in self.DYN_ATTRS:
+            new_attr = attribute(fget=self.read_general,
+                                 fset=self.write_general, **d)
+            self.add_attribute(new_attr)
     
     def query(self, msg):
         '''Send a query and wait for its reply.'''
         if self.lock.acquire(timeout=0.1):
             msg += ' eoc'
-            self.debug_stream('sent: ' + msg)
+            print('sent:', msg, file=self.log_debug)
             self.s.sendall(msg.encode())
             ans = self.s.recv(1024).decode()
-            self.debug_stream('received: ' + ans)
+            print('received:', ans, file=self.log_debug)
             assert ans.endswith('eoa')
             self.lock.release()
             return ans[:-4]
         else:
-            self.debug_stream(f"can't send '{msg}': socket is busy")
+            print(f"can't send '{msg}': socket is busy", file=self.log_error)
             return 'busy'
     
+    def read_general(self, attr):
+        key = attr.get_name()
+        print('reading', key, file=self.log_debug)
+        attr.set_value(self.query(f'read {key}'))
+    
+    def write_general(self, attr):
+        key = attr.get_name()
+        val = attr.get_write_value()
+        cmd = 'send' if key in ['photonenergy', 'exitslit', 'helicity'] else 'set'
+        ans = self.query(f'{cmd} {key} {val}')
+        if ans == 'started':
+            print(f'[key] moving to {val}', file=self.log_debug)
+        else:
+            print(f'could not send {key} to {val}', file=self.log_error)
+        
     def is_movable(self):
         '''Check whether undulator and monochromator are in position.'''
         ans = self.query('check photonenergy')
@@ -102,42 +149,6 @@ class P04_beamline(Device):
         else:
             self.error_stream('unexpected or incomplete answer')
             return None, time(), AttrQuality.ATTR_WARNING
-
-    def read_undugap(self):
-        value, tstamp, state = self.read_attr('undugap')
-        q = AttrQuality.ATTR_VALID if state else AttrQuality.ATTR_CHANGING
-        return value, tstamp, q
-    
-    def read_energy(self):
-        value, tstamp, state = self.read_attr('photonenergy')
-        q = AttrQuality.ATTR_VALID if state else AttrQuality.ATTR_CHANGING
-        return value, tstamp, q
-    
-    def read_mono(self):
-        value, tstamp, state = self.read_attr('mono')
-        q = AttrQuality.ATTR_VALID if state else AttrQuality.ATTR_CHANGING
-        return value, tstamp, q
-    
-    def read_exitslit(self):
-        value, tstamp, state = self.read_attr('mono')
-        return value, tstamp, AttrQuality.ATTR_VALID
-    
-    def write_exitslit(self, value):
-        ans = self.query(f'set exitslit {value}')
-        if ans == 'done':
-            self.debug_stream(f'moved exit slit to {value}')
-        else:
-            self.debug_stream('failed setting exit slit')
-        return
-    
-    def write_energy(self, energy):
-        if self.is_movable():
-            ans = self.query(f'send mono {energy:.2f}')
-            if ans == 'started':
-                self.set_state(DevState.MOVING)
-                self.debug_stream(f'Energy moving to {energy:.2f}')
-            else:
-                self.debug_stream(f'could not send Energy to {energy:.2f}')
 
 
 
