@@ -54,9 +54,12 @@ class P04_beamline(Device):
              access=READ),
         dict(name='exsu2baffle', label='exsu2baffle', dtype=tango.DevFloat,
              access=READ),
+        dict(name='pressure', label='experiment pressure', access=READ,
+             dtype=tango.DevFloat, unit='mbar', format='%.2E')
         ]
-    
-    screen = attribute(name='screen', dtype=tango.DevEnum,
+    # FIXME: enums currently don't work in dynamic attributes
+    screen = attribute(name='screen', label='beamline screen',
+                       dtype=tango.DevEnum, access=READ_WRITE,
                        enum_labels=['closed', 'mesh', 'open'])
     
     host = device_property(dtype=str, mandatory=True, update_db=True)
@@ -95,12 +98,15 @@ class P04_beamline(Device):
     def read_general(self, attr):
         key = attr.get_name()
         print('reading', key, file=self.log_debug)
-        attr.set_value(self.query(f'read {key}'))
+        val = self.query(f'read {key}')
+        val = float(val) if '.' in val else int(val)
+        attr.set_value(val)
     
     def write_general(self, attr):
         key = attr.get_name()
         val = attr.get_write_value()
-        cmd = 'send' if key in ['photonenergy', 'exitslit', 'helicity'] else 'set'
+        send_attrs = ['photonenergy', 'exitslit', 'helicity', 'screen']
+        cmd = 'send' if key in send_attrs else 'set'
         ans = self.query(f'{cmd} {key} {val}')
         if ans == 'started':
             print(f'[key] moving to {val}', file=self.log_debug)

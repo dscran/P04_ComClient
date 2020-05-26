@@ -108,24 +108,23 @@ class executecommand:
     def __call__(self):
         
         if self.command=='read':
-            if self.alias=='mono':
-                self.position=self.motor.Position()
-                print 'current position: '+str(self.position)
-                connection.sendall('current position: '+str(self.position)+' eoa')
+            self.position=self.motor.Position()
+            print 'current position: '+str(self.position)
+            connection.sendall('current position: '+str(self.position)+' eoa')
             
-        elif self.command=='set':
+        elif self.command in ['set', 'send']:
             if self.tango:
-                if self.alias=='mono':
+                if True: #self.alias=='mono':
                     if self.minvalue<=float(self.value)<=self.maxvalue:
                         time.sleep(random.random())
-                        print 'moving for 10 seconds'
-                        time.sleep(10)
+                        # print 'moving for 10 seconds'
+                        # time.sleep(10)
                         self.motor.energy = self.value
-                        print 'moving stopped, sending answer'
+                        # print 'moving stopped, sending answer'
                         connection.sendall('done eoa')
                     else:
                         connection.sendall('out-of-range eoa')
-
+                        
 
         else:
             connection.sendall('unknown command eoa')
