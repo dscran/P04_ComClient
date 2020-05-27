@@ -25,13 +25,13 @@ class P04_beamline(Device):
              access=READ_WRITE, unit='eV', format='%6.2f', min_value=240,
              max_value=2000),
         dict(name='exitslit', label="exit slit", dtype=tango.DevFloat,
-             access=READ_WRITE, unit="um", format="%4.0f", polling_period=1),
+             access=READ_WRITE, unit="um", format="%4.0f"),
         dict(name='helicity', label='helicity', dtype=tango.DevLong,
              access=READ_WRITE),
         dict(name='mono', label="monochromator", dtype=tango.DevFloat,
-             access=READ, unit="eV", format="%6.2f", polling_period=1),
+             access=READ, unit="eV", format="%6.2f"),
         dict(name='undugap', label='undulator gap', dtype=tango.DevFloat,
-             access=READ, unit='mm', polling_period=1),
+             access=READ, unit='mm'),
         dict(name='undufactor', label='undulator scale factor',
              access=READ_WRITE, dtype=tango.DevFloat),
         dict(name='undushift', label='undulator shift', dtype=tango.DevFloat,
@@ -55,15 +55,17 @@ class P04_beamline(Device):
         dict(name='exsu2baffle', label='exsu2baffle', dtype=tango.DevFloat,
              access=READ),
         dict(name='pressure', label='experiment pressure', access=READ,
-             dtype=tango.DevFloat, unit='mbar', format='%.2E')
+             dtype=tango.DevFloat, unit='mbar', format='%.2E'),
+        dict(name='screen', label='beamline screen', dtype=tango.DevLong,
+             access=READ_WRITE, enum_labels=['closed', 'mesh', 'open'])
         ]
-    # FIXME: enums currently don't work in dynamic attributes
-    screen = attribute(name='screen', label='beamline screen',
-                       dtype=tango.DevEnum, access=READ_WRITE,
-                       enum_labels=['closed', 'mesh', 'open'])
+
+    ready_to_move = attribute(
+        name='ready_to_move', label='in position', access=READ,
+        dtype=tango.DevBoolean, polling_period=500, fread="is_movable")
     
     host = device_property(dtype=str, mandatory=True, update_db=True)
-    port = device_property(dtype=int, default_value=3001, mandatory=True)
+    port = device_property(dtype=int, default_value=3001)
     
     def init_device(self):
         Device.init_device(self)
@@ -98,8 +100,7 @@ class P04_beamline(Device):
     def read_general(self, attr):
         key = attr.get_name()
         print('reading', key, file=self.log_debug)
-        val = self.query(f'read {key}')
-        val = float(val) if '.' in val else int(val)
+        val, time, quality = self.read_attr(key)
         attr.set_value(val)
     
     def write_general(self, attr):
@@ -109,6 +110,7 @@ class P04_beamline(Device):
         cmd = 'send' if key in send_attrs else 'set'
         ans = self.query(f'{cmd} {key} {val}')
         if ans == 'started':
+            self.set_state(DevState.MOVING)
             print(f'[key] moving to {val}', file=self.log_debug)
         else:
             print(f'could not send {key} to {val}', file=self.log_error)
@@ -145,16 +147,13 @@ class P04_beamline(Device):
         tstamp : time stamp
         quality : AttrQuality instance (ATTR_VALID, ATTR_CHANGING, ...)
         '''
-        state = self.is_movable()
         ans = self.query(f'read {attr}')
         if 'current position' in ans:
             val = float(ans.split(':')[1])
-            return val, time(), state
-        elif 'busy' in ans:
-            return None, time(), AttrQuality.ATTR_CHANGING
+            return val, time(), AttrQuality.ATTR_VALID
         else:
-            self.error_stream('unexpected or incomplete answer')
-            return None, time(), AttrQuality.ATTR_WARNING
+            self.error_stream('Socket busy or unexpected/incomplete answer')
+            return None, time(), AttrQuality.ATTR_INVALID
 
 
 
