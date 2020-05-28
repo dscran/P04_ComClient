@@ -95,6 +95,7 @@ while True:
         while running:
             cmd = connection.recv(1024).decode()
             print('command:', cmd)
+            time.sleep(np.random.random() / 10)  # random delay up to 0.1s
             connection.sendall(ds.parse(cmd).encode())
             if 'closeconnection' in cmd:
                 print('connection closed')

@@ -62,7 +62,7 @@ class P04_beamline(Device):
 
     ready_to_move = attribute(
         name='ready_to_move', label='in position', access=READ,
-        dtype=tango.DevBoolean, polling_period=500, fread="is_movable")
+        dtype=tango.DevBoolean, polling_period=1000, fread="is_movable")
     
     host = device_property(dtype=str, mandatory=True, update_db=True)
     port = device_property(dtype=int, default_value=3001)
