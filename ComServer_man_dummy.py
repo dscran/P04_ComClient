@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-@author: gregorhartmann
+@author: Michael Schneider, MBI Berlin
 """
-#/sbin/ifconfig
-#ps -fA | grep python
 
 
 import socket
