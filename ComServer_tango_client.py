@@ -51,11 +51,11 @@ class P04_beamline(Device):
         dict(name='slt2voffset', label='slit ver offset', dtype=tango.DevFloat,
              access=READ),
         dict(name='exsu2bpm', label='exsu2bpm', dtype=tango.DevFloat,
-             access=READ),
+              access=READ),
         dict(name='exsu2baffle', label='exsu2baffle', dtype=tango.DevFloat,
-             access=READ),
+              access=READ),
         dict(name='pressure', label='experiment pressure', access=READ,
-             dtype=tango.DevFloat, unit='mbar', format='%.2E'),
+              dtype=tango.DevFloat, unit='mbar', format='%.2E'),
         dict(name='screen', label='beamline screen', dtype=tango.DevLong,
              access=READ_WRITE, min_value=0, max_value=2,
              enum_labels=['closed', 'mesh', 'open'])
@@ -66,7 +66,7 @@ class P04_beamline(Device):
         dtype=tango.DevBoolean, polling_period=1000, fread="is_movable")
 
     host = device_property(dtype=str, mandatory=True, update_db=True)
-    port = device_property(dtype=int, default_value=3001)
+    port = device_property(dtype=int, default_value=3002)
 
     def init_device(self):
         Device.init_device(self)
@@ -152,7 +152,7 @@ class P04_beamline(Device):
         quality : AttrQuality instance (ATTR_VALID, ATTR_CHANGING, ...)
         '''
         ans = self.query(f'read {attr}')
-        if 'current position' in ans:
+        if 'Current value' in ans:
             val = float(ans.split(':')[1])
             return val, time(), AttrQuality.ATTR_VALID
         else:
