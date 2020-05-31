@@ -15,19 +15,19 @@ class DummyDevice(object):
         self.target_value = val
         self.speed = speed
         self.t_start = time.time()
-    
+
     def get_value(self):
         v0, v1 = self.start_value, self.target_value
         dv = v1 - v0
         t = min(time.time() - self.t_start, np.abs(dv / self.speed))
         return v0 + np.sign(dv) * t * self.speed
-    
+
     def set_value(self, val):
         self.start_value = self.get_value()
         self.target_value = val
         self.t_start = time.time()
-        
-        
+
+
 # %%
 class DummyServer(object):
     def __init__(self):
@@ -39,7 +39,7 @@ class DummyServer(object):
             ]
         self.devices = {d: DummyDevice() for d in devlist}
         self.writable = ['photonenergy', 'exitslit', 'undufactor', 'screen']
-    
+
     def parse(self, cmd):
         cmd = cmd.split()
         valid = (
@@ -68,28 +68,28 @@ class DummyServer(object):
             return f'{in_position} eoa'
         if cmd[0] == 'closeconnection':
             return 'bye! eoa'
-    
-    
+
+
 # %%
 
 while True:
     currentIP = socket.gethostbyname(socket.gethostname())
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)		
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_address = (currentIP, 3001)
     print('server on:', str(currentIP))
-    sock.bind(server_address)				
+    sock.bind(server_address)
     sock.listen(1)
-    
+
     print('waiting for connection on port 3001')
     connection, clientaddress = sock.accept()
-    
+
     print('connection established to', str(clientaddress))
-    
+
     ds = DummyServer()
     running = True
-    try:    
+    try:
         while running:
             cmd = connection.recv(1024).decode()
             print('command:', cmd)
@@ -98,5 +98,5 @@ while True:
             if 'closeconnection' in cmd:
                 print('connection closed')
                 running = False
-                break   
+                break
     finally: connection.close()
