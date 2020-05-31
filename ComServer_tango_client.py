@@ -83,6 +83,7 @@ class P04_beamline(Device):
                                  fset=self.write_general, **d)
             self.add_attribute(new_attr)
 
+    @command(dtype_in=str)
     def query(self, msg):
         '''Send a query and wait for its reply.'''
         if self.lock.acquire(timeout=0.1):
@@ -138,6 +139,7 @@ class P04_beamline(Device):
     def closeconnection(self):
         ans = self.query('closeconnection')
         if 'bye!' in ans:
+            self.s.close()
             self.set_state(DevState.OFF)
 
     def read_attr(self, attr):
