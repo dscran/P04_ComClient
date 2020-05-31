@@ -47,7 +47,8 @@ class DummyServer(object):
             & (cmd[0] in ['set', 'read', 'send', 'check', 'closeconnection'])
             )
         if not valid:
-            raise ValueError
+            print('command not understood. Doing nothing.')
+            return 'unknown command eoa'
         if cmd[0] == 'read':
             try:
                 val = self.devices[cmd[1]].get_value()

@@ -125,7 +125,7 @@ class P04_beamline(Device):
         self.set_state(DevState.ON if ans else DevState.MOVING)
         return ans
 
-    @command(dtype_in=str)
+    @command(dtype_in=str, dtype_out=str)
     def cmd_async(self, msg, test):
         '''Send a command without waiting for it to finish.
 
