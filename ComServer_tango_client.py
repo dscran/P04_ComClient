@@ -32,16 +32,16 @@ class P04_beamline(Device):
              access=READ, unit="eV", format="%6.2f"),
         dict(name='undugap', label='undulator gap', dtype=tango.DevFloat,
              access=READ, unit='mm'),
-        dict(name='undufactor', label='undulator scale factor',
-             access=READ_WRITE, format='%3.2f', dtype=tango.DevFloat),
+        # dict(name='undufactor', label='undulator scale factor',
+        #      access=READ, format='%3.2f', dtype=tango.DevFloat),
         dict(name='undushift', label='undulator shift', dtype=tango.DevFloat,
              access=READ, unit='mm'),
         dict(name='ringcurrent', label='ring current', dtype=tango.DevFloat,
              access=READ, unit='mA'),
-        dict(name='keithley1', label='beamline keithley', dtype=tango.DevFloat,
-             access=READ),
-        dict(name='keithley2', label='user keithley', dtype=tango.DevFloat,
-             access=READ),
+        # dict(name='keithley1', label='beamline keithley', dtype=tango.DevFloat,
+        #      access=READ),
+        # dict(name='keithley2', label='user keithley', dtype=tango.DevFloat,
+        #      access=READ),
         dict(name='slt2hleft', label='slit hor left', dtype=tango.DevFloat,
              access=READ),
         dict(name='slt2hright', label='slit hor right', dtype=tango.DevFloat,
@@ -50,12 +50,12 @@ class P04_beamline(Device):
              access=READ),
         dict(name='slt2voffset', label='slit ver offset', dtype=tango.DevFloat,
              access=READ),
-        dict(name='exsu2bpm', label='exsu2bpm', dtype=tango.DevFloat,
-              access=READ),
-        dict(name='exsu2baffle', label='exsu2baffle', dtype=tango.DevFloat,
-              access=READ),
-        dict(name='pressure', label='experiment pressure', access=READ,
-              dtype=tango.DevFloat, unit='mbar', format='%.2E'),
+        # dict(name='exsu2bpm', label='exsu2bpm', dtype=tango.DevFloat,
+              # access=READ),
+        # dict(name='exsu2baffle', label='exsu2baffle', dtype=tango.DevFloat,
+        #       access=READ),
+        # dict(name='pressure', label='experiment pressure', access=READ,
+        #       dtype=tango.DevFloat, unit='mbar', format='%.2E'),
         dict(name='screen', label='beamline screen', dtype=tango.DevLong,
              access=READ_WRITE, min_value=0, max_value=2,
              enum_labels=['closed', 'mesh', 'open'])
@@ -75,6 +75,9 @@ class P04_beamline(Device):
         self.s.setblocking(True)
         self.lock = Lock()
         self.set_state(DevState.ON)
+        energy = self.read_attr('photonenergy')[0]
+        self._setpoint_E = [energy, energy]
+        self._setpoint_helicity = self.read_attr('helicity')[0]
 
     def initialize_dynamic_attributes(self):
         # TODO: setup polling and event filter
@@ -86,13 +89,13 @@ class P04_beamline(Device):
     @command(dtype_in=str)
     def query(self, msg):
         '''Send a query and wait for its reply.'''
-        if self.lock.acquire(timeout=0.1):
+        if self.lock.acquire(timeout=0.5):
             if not msg.endswith(' eoc'):
                 msg += ' eoc'
-            print('sent:', msg, file=self.log_debug)
+            # print('sent:', msg, file=self.log_debug)
             self.s.sendall(msg.encode())
             ans = self.s.recv(1024).decode()
-            print('received:', ans, file=self.log_debug)
+            # print('received:', ans, file=self.log_debug)
             assert ans.endswith('eoa')
             self.lock.release()
             return ans[:-4]
@@ -102,28 +105,60 @@ class P04_beamline(Device):
 
     def read_general(self, attr):
         key = attr.get_name()
-        print('reading', key, file=self.log_debug)
+        # print('reading', key, file=self.log_debug)
         val, time, quality = self.read_attr(key)
         attr.set_value(val)
 
+    # def write_general(self, attr):
+    #     key = attr.get_name()
+    #     val = attr.get_write_value()
+    #     send_attrs = ['photonenergy', 'exitslit', 'helicity', 'screen']
+    #     cmd = 'send' if key in send_attrs else 'set'
+    #     ntries = 0
+    #     while ntries < 10:
+    #         ntries += 1
+    #         if self.is_movable():
+    #             ans = self.query(f'{cmd} {key} {val}')
+    #             print(f'setting {key}: {val} ({ntries}/10)', file=self.log_debug)
+    #             if ans == 'started':
+    #                 self.set_state(DevState.MOVING)
+    #                 print(f'[key] moving to {val}', file=self.log_debug)
+    #                 return
+    #             time.sleep(1)
+            
+    #     print(f'could not send {key} to {val}', file=self.log_error)
+        
     def write_general(self, attr):
         key = attr.get_name()
         val = attr.get_write_value()
         send_attrs = ['photonenergy', 'exitslit', 'helicity', 'screen']
         cmd = 'send' if key in send_attrs else 'set'
+        if key == 'photonenergy':
+            self._setpoint_E[0] = val
+        if key == 'helicity':
+            self._setpoint_helicity = val
         ans = self.query(f'{cmd} {key} {val}')
+        print(f'setting {key}: {val}', file=self.log_debug)
         if ans == 'started':
+            self._setpoint_E[1] = val
             self.set_state(DevState.MOVING)
             print(f'[key] moving to {val}', file=self.log_debug)
-        else:
-            print(f'could not send {key} to {val}', file=self.log_error)
+            return
+            
+        print(f'could not send {key} to {val}', file=self.log_error)
 
     def is_movable(self):
         '''Check whether undulator and monochromator are in position.'''
-        ans = self.query('check photonenergy')
-        ans = True if ans == '1' else False
-        self.set_state(DevState.ON if ans else DevState.MOVING)
-        return ans
+        in_pos = self.query('check photonenergy')
+        in_pos= True if in_pos == '1' else False
+        if (self._setpoint_E[0] != self._setpoint_E[1]) and in_pos:
+            ans_set = self.query(f'send photonenergy {self._setpoint_E[0]}')
+            if ans_set == 'started':
+                self._setpoint_E[1] = self._setpoint_E[0]
+        helicity = self.read_attr('helicity')[0]
+        state = (helicity == self._setpoint_helicity) and in_pos
+        self.set_state(DevState.ON if state else DevState.MOVING)
+        return in_pos
 
     @command(dtype_in=str, dtype_out=str)
     def cmd_async(self, msg, test):
